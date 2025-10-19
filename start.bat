@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-rem --- 设置和验证 uv 环境 ---
+rem --- Set up and verify the UV environment ---
 call :SetupUv
 if %errorlevel% neq 0 (
     echo.
@@ -10,7 +10,7 @@ if %errorlevel% neq 0 (
     goto :eof
 )
 
-rem --- 启动服务 ---
+rem --- Start the service ---
 uv run launch_server.py
 
 endlocal
@@ -19,15 +19,15 @@ goto :eof
 
 :SetupUv
     echo --- Checking for uv...
-    
-    rem 尝试直接执行 uv，如果成功，说明一切就绪，直接返回
+
+    rem Attempt to execute `uv` directly. If successful, it indicates everything is ready and you can return immediately.
     uv --version >nul 2>&1
     if %errorlevel% equ 0 (
         echo uv is already installed and accessible.
         exit /b 0
     )
 
-    rem 如果命令失败，则开始安装流程
+    rem If the command fails, the installation process will begin.
     echo uv not found or not working. Attempting to install...
     powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
     if %errorlevel% neq 0 (
@@ -35,12 +35,12 @@ goto :eof
         exit /b 1
     )
 
-    rem 安装后，更新当前会话的 PATH
+    rem After installation, update the PATH for the current session.
     echo Installation script finished. Updating PATH for this session...
     set "UV_BIN_PATH=%USERPROFILE%\.local\bin"
     set "PATH=%UV_BIN_PATH%;%PATH%"
 
-    rem 再次验证，确保安装和路径设置都已生效
+    rem Verify again to ensure that both the installation and path settings have taken effect.
     echo Verifying installation...
     uv --version
     if %errorlevel% neq 0 (

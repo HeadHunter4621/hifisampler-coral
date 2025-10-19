@@ -1,4 +1,7 @@
-# hifisampler
+# Coral-Specific README.md
+All comments translated from Chinese to English using DeepL
+
+# hifisampler Original README.md
 
 [中文文档](README_zh_cn.md) | [English Document](README.md)
 
@@ -45,7 +48,7 @@ Three installation methods are provided; choose the one that best suits your nee
    ```
 
     If you're using the CPU version, set it as follows:
-  
+
     ```toml
     [tool.uv.sources]
      torch = [

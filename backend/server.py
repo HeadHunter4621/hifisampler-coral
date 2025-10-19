@@ -4,31 +4,33 @@ import logging
 import traceback
 from pathlib import Path
 from aiohttp import web
-from concurrent.futures import ThreadPoolExecutor   # 或 ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor  # or ProcessPoolExecutor
 from backend.resampler import Resampler
 from config import CONFIG
 
-server_ready = False                # /GET 用
+server_ready = False  # /GET Use
+
 
 def split_arguments(input_string: str):
-    otherargs = input_string.split(' ')[-11:]
-    file_path_strings = ' '.join(input_string.split(' ')[:-11])
-    first_file, second_file = file_path_strings.split('.wav ')
+    otherargs = input_string.split(" ")[-11:]
+    file_path_strings = " ".join(input_string.split(" ")[:-11])
+    first_file, second_file = file_path_strings.split(".wav ")
     return [first_file + ".wav", second_file] + otherargs
+
 
 async def handle_get(request: web.Request):
     if server_ready:
-        return web.Response(text='Server Ready', status=200)
+        return web.Response(text="Server Ready", status=200)
     else:
-        return web.Response(text='Server Initializing', status=503)
+        return web.Response(text="Server Initializing", status=503)
+
 
 async def handle_post(request: web.Request):
     global server_ready
 
     if not server_ready:
         logging.warning("POST arrived but server not ready.")
-        return web.Response(text='Server initializing, please retry.',
-                            status=503)
+        return web.Response(text="Server initializing, please retry.", status=503)
 
     post_data_string = await request.text()
     logging.info(f"post_data_string: {post_data_string}")
@@ -49,29 +51,35 @@ async def handle_post(request: web.Request):
     except FileNotFoundError:
         err = "Error processing: Input file not found."
         logging.error(err, exc_info=True)
-        return web.Response(text=f"{err}\n{traceback.format_exc()}",
-                            status=404)
+        return web.Response(text=f"{err}\n{traceback.format_exc()}", status=404)
 
     except Exception:
         err = "Error processing: Internal error."
         logging.error(err, exc_info=True)
-        return web.Response(text=f"{err}\n{traceback.format_exc()}",
-                            status=500)
+        return web.Response(text=f"{err}\n{traceback.format_exc()}", status=500)
+
 
 def run(port: int = 8572):
     global server_ready, infer_executor
-    infer_executor = ThreadPoolExecutor(max_workers=CONFIG.max_workers) # 推理任务队列
+    infer_executor = ThreadPoolExecutor(
+        max_workers=CONFIG.max_workers
+    )  # Inference Task Queue
 
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s | %(levelname)s | %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
+    )
 
     app = web.Application()
-    app.add_routes([web.get('/', handle_get),
-                    web.post('/', handle_post)])
+    app.add_routes([web.get("/", handle_get), web.post("/", handle_post)])
 
     server_ready = True
-    logging.info(f'Listening on {port}; aiohttp + inference-thread={CONFIG.max_workers}')
-    web.run_app(app, port=port, access_log=None)   # 生产环境用 gunicorn -k aiohttp.worker.GunicornWebWorker ...
+    logging.info(
+        f"Listening on {port}; aiohttp + inference-thread={CONFIG.max_workers}"
+    )
+    web.run_app(
+        app, port=port, access_log=None
+    )  # Production environment uses gunicorn -k aiohttp.worker.GunicornWebWorker ...
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     run()

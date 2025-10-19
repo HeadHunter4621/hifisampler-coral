@@ -1,4 +1,4 @@
-# 从SingingVocoders项目复制
+# Copied from the SingingVocoders project
 # https://github.com/openvpi/SingingVocoders/blob/main/utils/wav2mel.py
 
 import numpy as np
@@ -61,7 +61,7 @@ class PitchAdjustableMelSpectrogram:
             y.unsqueeze(1),
             (
                 int((win_size_new - hop_length) // 2),
-                int((win_size_new - hop_length+1) // 2),
+                int((win_size_new - hop_length + 1) // 2),
             ),
             mode="reflect",
         )
@@ -94,10 +94,11 @@ class PitchAdjustableMelSpectrogram:
 
         return spec
 
-    def dynamic_range_compression_torch(self,x, C=1, clip_val=1e-5):
+    def dynamic_range_compression_torch(self, x, C=1, clip_val=1e-5):
         return torch.log(torch.clamp(x, min=clip_val) * C)
 
-if __name__=='__main__':
+
+if __name__ == "__main__":
     import glob
     import torchaudio
     from tqdm import tqdm
@@ -109,16 +110,15 @@ if __name__=='__main__':
     #
     # is_main_process = not bool(re.match(r'((.*Process)|(SyncManager)|(.*PoolWorker))-\d+', current_process().name))
 
-
-    lll = glob.glob(r'D:\propj\Disa\data\opencpop\raw\wavs/**.wav')
+    lll = glob.glob(r"D:\propj\Disa\data\opencpop\raw\wavs/**.wav")
     torch.set_num_threads(1)
 
     for i in tqdm(lll):
         audio, sr = torchaudio.load(i)
         audio = torch.clamp(audio[0], -1.0, 1.0)
 
-        mel_spec_transform=PitchAdjustableMelSpectrogram()
+        mel_spec_transform = PitchAdjustableMelSpectrogram()
         with torch.inference_mode():
-            spectrogram = mel_spec_transform(audio.unsqueeze(0).cuda())*0.434294
+            spectrogram = mel_spec_transform(audio.unsqueeze(0).cuda()) * 0.434294
             # spectrogram = 20 * torch.log10(torch.clamp(spectrogram, min=1e-5)) - 20  #ds 是log10
             # spectrogram = torch.log(torch.clamp(spectrogram, min=1e-5))

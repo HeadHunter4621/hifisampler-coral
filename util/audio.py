@@ -9,10 +9,10 @@ import soundfile as sf
 if CONFIG.wave_norm:
     try:
         import pyloudnorm as pyln
+
         logging.info("pyloudnorm imported for wave normalization.")
     except ImportError:
-        logging.warning(
-            "pyloudnorm not found, wave normalization disabled.")
+        logging.warning("pyloudnorm not found, wave normalization disabled.")
         CONFIG.wave_norm = False  # Disable if import fails
 
 
@@ -30,7 +30,12 @@ def dynamic_range_compression_torch(x, C=1, clip_val=1e-9):
 
 
 def loudness_norm(
-    audio: np.ndarray, rate: int, peak=-1.0, loudness=-23.0, block_size=0.400, strength=100
+    audio: np.ndarray,
+    rate: int,
+    peak=-1.0,
+    loudness=-23.0,
+    block_size=0.400,
+    strength=100,
 ) -> np.ndarray:
     """
     Perform loudness normalization (ITU-R BS.1770-4) on audio files.
@@ -48,53 +53,60 @@ def loudness_norm(
     """
 
     original_length = len(audio)
-    original_audio = audio.copy()  # 保存原始音频用于后续处理
+    original_audio = (
+        audio.copy()
+    )  # Preserve the original audio for subsequent processing
 
     if CONFIG.trim_silence:
+
         def get_rms_db(audio_segment):
             if len(audio_segment) == 0:
                 return -np.inf
             rms = np.sqrt(np.mean(np.square(audio_segment)))
-            if rms < 1e-10:  # 避免log(0)错误
+            if rms < 1e-10:  # Avoid log(0) errors
                 return -np.inf
             return 20 * np.log10(rms)
 
-        frame_length = int(rate * 0.02)  # 20ms窗口
-        hop_length = int(rate * 0.01)    # 10ms步长
+        frame_length = int(rate * 0.02)  # 20ms window
+        hop_length = int(rate * 0.01)  # 10ms step size
 
         rms_values = []
         for i in range(0, len(audio) - frame_length, hop_length):
-            frame = audio[i:i+frame_length]
+            frame = audio[i : i + frame_length]
             rms_db = get_rms_db(frame)
             rms_values.append(rms_db)
 
-        # 使用阈值检测有声帧
-        voiced_frames = [i for i, rms in enumerate(
-            rms_values) if rms > CONFIG.silence_threshold]
+        # Detect audio frames using threshold detection
+        voiced_frames = [
+            i for i, rms in enumerate(rms_values) if rms > CONFIG.silence_threshold
+        ]
 
         if voiced_frames:
             first_voiced = voiced_frames[0]
             last_voiced = voiced_frames[-1]
 
-            # 添加一些余量，避免突然截断
-            padding_frames = int(rate * 0.1) // hop_length  # 添加100ms的余量
+            # Add some extra margin to avoid abrupt truncation
+            padding_frames = int(rate * 0.1) // hop_length  # Add a 100ms margin
 
-            # 确保不超出边界
+            # Ensure that boundaries are not exceeded
             start_sample = max(0, first_voiced * hop_length)
-            end_sample = min(len(audio), (last_voiced + 1 +
-                             padding_frames) * hop_length + frame_length)
+            end_sample = min(
+                len(audio),
+                (last_voiced + 1 + padding_frames) * hop_length + frame_length,
+            )
 
             trimmed_audio = audio[start_sample:end_sample]
             logging.info(
-                f'Trimmed silence: {len(audio)} -> {len(trimmed_audio)} samples')
+                f"Trimmed silence: {len(audio)} -> {len(trimmed_audio)} samples"
+            )
 
-            # 使用截取后的音频进行响度标准化
+            # Perform loudness normalization on the clipped audio
             audio = trimmed_audio
 
-    # 如果音频长度小于最小块大小，进行填充
+    # If the audio length is shorter than the minimum block size, padding is applied
     if len(audio) < int(rate * block_size):
         padding_length = int(rate * block_size) - len(audio)
-        audio = np.pad(audio, (0, padding_length), mode='reflect')
+        audio = np.pad(audio, (0, padding_length), mode="reflect")
 
     # Measure the loudness first
     meter = pyln.Meter(rate, block_size=block_size)  # create BS.1770 meter
@@ -106,58 +118,58 @@ def loudness_norm(
     # Loudness normalize audio to [loudness] LUFS
     audio = pyln.normalize.loudness(audio, _loudness, final_loudness)
 
-    # 如果启用了无声截取功能，需要恢复原始长度
+    # If silent capture is enabled, the original length must be restored
     if CONFIG.trim_silence:
-        # 创建一个全零数组作为输出
+        # Create an array filled entirely with zeros as the output
         output = np.zeros(original_length)
 
-        # 将标准化后的音频放回原位置，并添加平滑过渡
-        if voiced_frames:  # 确保有声音帧存在
+        # Return the normalized audio to its original position and add smooth transitions
+        if voiced_frames:  # Ensure that an audio frame exists
             start_sample = max(0, first_voiced * int(hop_length))
 
-            # 计算需要放回的音频长度
+            # Calculate the length of audio to be restored
             available_length = min(len(audio), original_length - start_sample)
 
-            # 创建一个逐渐衰减的窗函数，用于音频的尾部淡出
-            # 最多200ms或音频长度的1/4
+            # Create a gradually decaying window function for audio fade-out
+            # Maximum 200ms or 1/4 of audio length
             fade_length = min(int(rate * 0.2), available_length // 4)
             fade_out = np.ones(available_length)
 
             if fade_length > 0:
-                # 在末尾应用淡出效果
+                # Apply a fade-out effect at the end
                 fade_out[-fade_length:] = np.linspace(1.0, 0.0, fade_length)
 
-            # 应用淡出效果并放回原位置
-            output[start_sample:start_sample +
-                   available_length] = audio[:available_length] * fade_out
-            # 如果原始音频有后续部分，应用交叉淡入淡出
+            # Apply the fade-out effect and return it to its original position
+            output[start_sample : start_sample + available_length] = (
+                audio[:available_length] * fade_out
+            )
+            # If the original audio has a subsequent section, apply a crossfade
             if start_sample + available_length < original_length:
-                remain_length = original_length - \
-                    (start_sample + available_length)
+                remain_length = original_length - (start_sample + available_length)
                 crossfade_length = min(fade_length, remain_length)
 
                 if crossfade_length > 0:
                     crossfade_start = start_sample + available_length
-                    # 从原始音频获取剩余部分
+                    # Extract the remaining portion from the original audio
                     remain_audio = original_audio[crossfade_start:original_length]
 
-                    # 应用淡入效果到原始音频的剩余部分
+                    # Apply a fade-in effect to the remainder of the original audio
                     fade_in = np.ones(remain_length)
-                    fade_in[:crossfade_length] = np.linspace(
-                        0.0, 1.0, crossfade_length)
+                    fade_in[:crossfade_length] = np.linspace(0.0, 1.0, crossfade_length)
 
-                    # 填充剩余部分
+                    # Fill in the remaining portion
                     output[crossfade_start:original_length] = remain_audio * fade_in
-        else:  # 如果没有声音帧，直接返回原始音频
+        else:  # If there is no audio frame, return the raw audio directly
             output = audio[:original_length]
 
         audio = output
 
-    # 如果原始音频短于block_size，裁剪回原始长度
+    # If the original audio is shorter than block_size, trim it back to its original length
     if original_length < int(rate * block_size):
         audio = audio[:original_length]
 
     return audio
+
 
 def pre_emphasis_base_tension(wave, b):
     """
@@ -165,10 +177,10 @@ def pre_emphasis_base_tension(wave, b):
         wave: [1, 1, t]
     """
     original_length = wave.size(-1)
-    pad_length = (CONFIG.hop_size - (original_length %
-                  CONFIG.hop_size)) % CONFIG.hop_size
-    wave = torch.nn.functional.pad(
-        wave, (0, pad_length), mode='constant', value=0)
+    pad_length = (
+        CONFIG.hop_size - (original_length % CONFIG.hop_size)
+    ) % CONFIG.hop_size
+    wave = torch.nn.functional.pad(wave, (0, pad_length), mode="constant", value=0)
     wave = wave.squeeze(1)
 
     spec = torch.stft(
@@ -177,7 +189,7 @@ def pre_emphasis_base_tension(wave, b):
         hop_length=CONFIG.hop_size,
         win_length=CONFIG.win_size,
         window=torch.hann_window(CONFIG.win_size).to(wave.device),
-        return_complex=True
+        return_complex=True,
     )
     spec_amp = torch.abs(spec)
     spec_phase = torch.atan2(spec.imag, spec.real)
@@ -187,24 +199,29 @@ def pre_emphasis_base_tension(wave, b):
     fft_bin = CONFIG.n_fft // 2 + 1
     x0 = fft_bin / ((CONFIG.sample_rate / 2) / 1500)
     freq_filter = (-b / x0) * torch.arange(0, fft_bin, device=wave.device) + b
-    spec_amp_db = spec_amp_db + \
-        torch.clamp(freq_filter, min=-2, max=2).unsqueeze(0).unsqueeze(2)
+    spec_amp_db = spec_amp_db + torch.clamp(freq_filter, min=-2, max=2).unsqueeze(
+        0
+    ).unsqueeze(2)
 
     spec_amp = torch.exp(spec_amp_db)
 
     filtered_wave = torch.istft(
-        torch.complex(spec_amp * torch.cos(spec_phase),
-                      spec_amp * torch.sin(spec_phase)),
+        torch.complex(
+            spec_amp * torch.cos(spec_phase), spec_amp * torch.sin(spec_phase)
+        ),
         n_fft=CONFIG.n_fft,
         hop_length=CONFIG.hop_size,
         win_length=CONFIG.win_size,
-        window=torch.hann_window(CONFIG.win_size).to(wave.device)
+        window=torch.hann_window(CONFIG.win_size).to(wave.device),
     )
 
     original_max = torch.max(torch.abs(wave))
     filtered_max = torch.max(torch.abs(filtered_wave))
-    filtered_wave = filtered_wave * \
-        (original_max / filtered_max) * (np.clip(b/(-15), 0, 0.33) + 1)
+    filtered_wave = (
+        filtered_wave
+        * (original_max / filtered_max)
+        * (np.clip(b / (-15), 0, 0.33) + 1)
+    )
     filtered_wave = filtered_wave.unsqueeze(1)
     filtered_wave = filtered_wave[:, :, :original_length]
 
@@ -230,7 +247,7 @@ def read_wav(loc):
     exists = loc.exists()
     if not exists:  # check for alternative files
         for ext in sf.available_formats().keys():
-            loc = loc.with_suffix('.' + ext.lower())
+            loc = loc.with_suffix("." + ext.lower())
             exists = loc.exists()
             if exists:
                 break
@@ -265,6 +282,6 @@ def save_wav(loc, x):
     None
     """
     try:
-        sf.write(str(loc), x, CONFIG.sample_rate, 'PCM_16')
+        sf.write(str(loc), x, CONFIG.sample_rate, "PCM_16")
     except Exception as e:
         logging.error(f"Error saving WAV file: {e}")
